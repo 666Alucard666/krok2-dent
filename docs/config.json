@@ -1,0 +1,13 @@
+{
+  "version": "0.1.0-seed",
+  "note": "Стартові пропорції — будуть скориговані після класифікації спарсенних запитань",
+  "proportions": {
+    "general": 0.20,
+    "therapeutic": 0.20,
+    "surgical": 0.15,
+    "orthopedic": 0.15,
+    "pediatric_therapeutic": 0.10,
+    "pediatric_surgical": 0.08,
+    "orthodontic": 0.12
+  }
+}

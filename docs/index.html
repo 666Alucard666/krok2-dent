@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>КРОК-2 Стоматологія — Тренажер</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body>
+  <div x-data="krokApp()" x-init="init()" x-cloak>
+
+    <!-- ============ СТАРТОВИЙ ЕКРАН ============ -->
+    <section x-show="view === 'start'" class="screen start-screen">
+      <header class="hero">
+        <h1>КРОК-2 Стоматологія</h1>
+        <p class="subtitle">Тренажер для підготовки до іспиту</p>
+      </header>
+
+      <div class="card">
+        <h2>Формат сесії</h2>
+        <ul class="info-list">
+          <li><strong>150 запитань</strong> за <strong>200 хвилин</strong></li>
+          <li>Один правильний варіант з п'яти (A–E)</li>
+          <li>Прохідний бал: <strong>64%</strong> (96 правильних)</li>
+          <li>Питання розподілені за розділами як на реальному іспиті</li>
+          <li>В кінці — повний розбір з поясненнями</li>
+        </ul>
+      </div>
+
+      <div x-show="loadError" class="card error">
+        <p>Помилка завантаження бази запитань: <span x-text="loadError"></span></p>
+      </div>
+
+      <div x-show="loaded" class="card">
+        <h3>Доступно запитань у базі</h3>
+        <ul class="info-list small">
+          <template x-for="(count, section) in bankCounts" :key="section">
+            <li><span x-text="sectionLabels[section]"></span>: <strong x-text="count"></strong></li>
+          </template>
+        </ul>
+        <p class="muted small">Всього: <span x-text="totalBank"></span></p>
+      </div>
+
+      <button class="primary big" @click="startExam()" :disabled="!loaded || totalBank === 0">
+        Почати тест
+      </button>
+      <p x-show="loaded && totalBank < 150" class="muted small center">
+        База ще наповнюється. У сесії буде <span x-text="Math.min(totalBank, 150)"></span> запитань (повна сесія — 150).
+      </p>
+    </section>
+
+    <!-- ============ ЕКРАН ТЕСТУ ============ -->
+    <section x-show="view === 'exam'" class="screen exam-screen">
+      <header class="exam-header">
+        <div class="exam-progress">
+          <span>Питання <strong x-text="currentIdx + 1"></strong> з <strong x-text="questions.length"></strong></span>
+          <span class="muted small" x-text="sectionLabels[currentQuestion()?.section] || ''"></span>
+        </div>
+        <div class="timer" :class="{ 'warning': timeLeft < 600, 'danger': timeLeft < 60 }">
+          <span x-text="formatTime(timeLeft)"></span>
+        </div>
+      </header>
+
+      <main class="question-area">
+        <template x-if="currentQuestion()">
+          <div>
+            <div class="question-meta">
+              <button class="flag-btn" :class="{ 'flagged': flagged.has(currentQuestion().id) }"
+                      @click="toggleFlag(currentQuestion().id)"
+                      :title="flagged.has(currentQuestion().id) ? 'Зняти позначку' : 'Позначити для повернення'">
+                <span x-show="!flagged.has(currentQuestion().id)">⚐ Позначити</span>
+                <span x-show="flagged.has(currentQuestion().id)">⚑ Позначено</span>
+              </button>
+            </div>
+
+            <p class="question-text" x-text="currentQuestion().question_ua"></p>
+
+            <div class="options">
+              <template x-for="letter in ['A','B','C','D','E']" :key="letter">
+                <label class="option" :class="{ 'selected': answers[currentQuestion().id] === letter }">
+                  <input type="radio"
+                         :name="'q_' + currentQuestion().id"
+                         :value="letter"
+                         :checked="answers[currentQuestion().id] === letter"
+                         @change="answers[currentQuestion().id] = letter">
+                  <span class="letter" x-text="letter"></span>
+                  <span class="option-text" x-text="currentQuestion().options[letter]"></span>
+                </label>
+              </template>
+            </div>
+          </div>
+        </template>
+      </main>
+
+      <nav class="exam-nav">
+        <button @click="prevQuestion()" :disabled="currentIdx === 0">← Назад</button>
+        <button @click="showOverview = !showOverview" class="overview-btn">
+          Огляд (<span x-text="answeredCount()"></span>/<span x-text="questions.length"></span>)
+        </button>
+        <button @click="nextQuestion()" x-show="currentIdx < questions.length - 1">Далі →</button>
+        <button @click="confirmFinish()" x-show="currentIdx === questions.length - 1" class="primary">
+          Завершити
+        </button>
+      </nav>
+
+      <!-- Панель навігації за номерами -->
+      <div x-show="showOverview" @click.self="showOverview = false" class="overview-modal">
+        <div class="overview-panel">
+          <header>
+            <h3>Огляд відповідей</h3>
+            <button @click="showOverview = false" class="close">✕</button>
+          </header>
+          <div class="overview-grid">
+            <template x-for="(q, idx) in questions" :key="q.id">
+              <button class="overview-cell"
+                      :class="{
+                        'answered': answers[q.id],
+                        'flagged': flagged.has(q.id),
+                        'current': idx === currentIdx
+                      }"
+                      @click="goTo(idx); showOverview = false"
+                      x-text="idx + 1">
+              </button>
+            </template>
+          </div>
+          <footer>
+            <div class="legend">
+              <span><span class="dot answered"></span> Відповідь є</span>
+              <span><span class="dot flagged"></span> Позначено</span>
+              <span><span class="dot"></span> Без відповіді</span>
+            </div>
+            <button @click="confirmFinish()" class="primary">Завершити іспит</button>
+          </footer>
+        </div>
+      </div>
+
+      <!-- Підтвердження завершення -->
+      <div x-show="showConfirmFinish" @click.self="showConfirmFinish = false" class="overview-modal">
+        <div class="confirm-panel">
+          <h3>Завершити іспит?</h3>
+          <p>Ви відповіли на <strong x-text="answeredCount()"></strong> з <strong x-text="questions.length"></strong> запитань.</p>
+          <p x-show="answeredCount() < questions.length" class="warning-text">
+            Залишилось <strong x-text="questions.length - answeredCount()"></strong> без відповіді — вони зарахуються як неправильні.
+          </p>
+          <div class="confirm-actions">
+            <button @click="showConfirmFinish = false">Повернутись</button>
+            <button @click="finishExam()" class="primary">Завершити</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ЕКРАН РЕЗУЛЬТАТІВ ============ -->
+    <section x-show="view === 'results'" class="screen results-screen">
+      <header class="results-header" :class="{ 'pass': result.passed, 'fail': !result.passed }">
+        <h1 x-text="result.passed ? 'Складено!' : 'Не складено'"></h1>
+        <div class="score">
+          <span class="score-big" x-text="result.correct"></span>
+          <span class="score-of">/<span x-text="questions.length"></span></span>
+        </div>
+        <p>
+          <span x-text="result.percent.toFixed(1)"></span>% правильних
+          (прохідний — 64%)
+        </p>
+        <p class="muted small">Час: <span x-text="formatTime(result.timeSpent)"></span></p>
+      </header>
+
+      <div class="card">
+        <h3>За розділами</h3>
+        <ul class="info-list small">
+          <template x-for="(stat, section) in result.bySection" :key="section">
+            <li>
+              <span x-text="sectionLabels[section]"></span>:
+              <strong x-text="stat.correct + '/' + stat.total"></strong>
+              (<span x-text="stat.total > 0 ? ((stat.correct/stat.total)*100).toFixed(0) : 0"></span>%)
+            </li>
+          </template>
+        </ul>
+      </div>
+
+      <div class="results-controls">
+        <button @click="reviewFilter = 'all'" :class="{ 'active': reviewFilter === 'all' }">
+          Всі (<span x-text="questions.length"></span>)
+        </button>
+        <button @click="reviewFilter = 'wrong'" :class="{ 'active': reviewFilter === 'wrong' }">
+          Помилки (<span x-text="questions.length - result.correct"></span>)
+        </button>
+        <button @click="reviewFilter = 'flagged'" :class="{ 'active': reviewFilter === 'flagged' }">
+          Позначені (<span x-text="flagged.size"></span>)
+        </button>
+      </div>
+
+      <div class="review-list">
+        <template x-for="(q, idx) in filteredReview()" :key="q.id">
+          <article class="review-item" :class="{
+            'correct': answers[q.id] === q.correct,
+            'wrong': answers[q.id] && answers[q.id] !== q.correct,
+            'unanswered': !answers[q.id]
+          }">
+            <header class="review-item-header">
+              <span class="review-num">№<span x-text="originalIdx(q) + 1"></span></span>
+              <span class="muted small" x-text="sectionLabels[q.section]"></span>
+              <span class="status-badge" x-show="answers[q.id] === q.correct">✓ Правильно</span>
+              <span class="status-badge wrong" x-show="answers[q.id] && answers[q.id] !== q.correct">✗ Помилка</span>
+              <span class="status-badge muted" x-show="!answers[q.id]">— Без відповіді</span>
+            </header>
+            <p class="question-text" x-text="q.question_ua"></p>
+            <div class="review-options">
+              <template x-for="letter in ['A','B','C','D','E']" :key="letter">
+                <div class="review-option"
+                     :class="{
+                       'is-correct': letter === q.correct,
+                       'is-user': answers[q.id] === letter,
+                       'is-wrong': answers[q.id] === letter && letter !== q.correct
+                     }">
+                  <span class="letter" x-text="letter"></span>
+                  <span x-text="q.options[letter]"></span>
+                  <span class="marker" x-show="letter === q.correct">правильна</span>
+                  <span class="marker user" x-show="answers[q.id] === letter && letter !== q.correct">ваша</span>
+                </div>
+              </template>
+            </div>
+            <div class="explanation" x-show="q.explanation_ua">
+              <strong>Пояснення:</strong>
+              <span x-text="q.explanation_ua"></span>
+            </div>
+          </article>
+        </template>
+      </div>
+
+      <button class="primary big" @click="restart()">Новий тест</button>
+    </section>
+
+  </div>
+</body>
+</html>

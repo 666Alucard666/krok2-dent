@@ -1,0 +1,22 @@
+.DS_Store
+.env
+.env.local
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.uv/
+*.egg-info/
+
+# Pipeline data (можуть бути великими — не комітимо)
+data/raw/
+data/batch_results/
+data/normalized/*.jsonl
+
+# IDE
+.vscode/
+.idea/
+*.swp
