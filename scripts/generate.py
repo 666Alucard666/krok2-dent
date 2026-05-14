@@ -253,23 +253,40 @@ def cmd_build_batch(total: int = DEFAULT_TOTAL) -> None:
 
 
 def _strict_json_schema(schema: dict) -> dict:
-    """OpenAI structured outputs strict mode вимагає additionalProperties: false і required для усіх властивостей."""
+    """OpenAI structured outputs strict mode:
+    - additionalProperties: false + required для всіх властивостей у object
+    - $ref не може мати сусідніх ключових слів (description, title, тощо)
+    """
+    def clean_ref_siblings(node: dict) -> None:
+        """Якщо node має $ref, видалити description/title/default та інші ключі."""
+        if "$ref" in node:
+            keep = {"$ref"}
+            for k in list(node.keys()):
+                if k not in keep:
+                    del node[k]
+
     def visit(node):
         if not isinstance(node, dict):
             return
+        # У об'єктів — required + additionalProperties: false
         if node.get("type") == "object":
             node.setdefault("additionalProperties", False)
             props = node.get("properties", {}) or {}
             if props:
                 node["required"] = list(props.keys())
             for v in props.values():
-                visit(v)
-        if "items" in node:
+                if isinstance(v, dict):
+                    clean_ref_siblings(v)
+                    visit(v)
+        if "items" in node and isinstance(node["items"], dict):
+            clean_ref_siblings(node["items"])
             visit(node["items"])
         for key in ("anyOf", "oneOf", "allOf"):
             if key in node:
                 for v in node[key]:
-                    visit(v)
+                    if isinstance(v, dict):
+                        clean_ref_siblings(v)
+                        visit(v)
         if "$defs" in node:
             for v in node["$defs"].values():
                 visit(v)
