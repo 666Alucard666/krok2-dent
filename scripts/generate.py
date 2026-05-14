@@ -40,7 +40,7 @@ BATCH_DIR = DATA / "batch_results"
 MODEL_BULK = "gpt-4o-mini"
 MODEL_VALIDATE = "gpt-4o"
 
-QUESTIONS_PER_REQUEST = 5
+QUESTIONS_PER_REQUEST = 8
 
 DEFAULT_TOTAL = 5000
 DEFAULT_PROPORTIONS = {
@@ -244,7 +244,7 @@ def cmd_build_batch(total: int = DEFAULT_TOTAL) -> None:
                         }
                     },
                     "temperature": 0.85,
-                    "max_tokens": 4096,
+                    "max_tokens": 8192,
                 },
             }
             f.write(json.dumps(request, ensure_ascii=False) + "\n")
