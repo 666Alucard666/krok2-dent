@@ -13,6 +13,7 @@ import json
 import os
 import random
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -21,6 +22,8 @@ from rich.console import Console
 from tqdm import tqdm
 
 from scripts.openai_schemas import ValidationVerdict
+
+VALIDATE_CONCURRENCY = 8
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
@@ -156,11 +159,7 @@ def cmd_sample(n_arg: str | None) -> None:
 
     system_prompt = (PROMPTS / "validate.md").read_text(encoding="utf-8")
 
-    results: list[dict] = []
-    flagged_ids: list[str] = []
-    severity_counts = {"none": 0, "minor": 0, "major": 0}
-
-    for q in tqdm(sample, desc="validate", unit="q"):
+    def _validate_one(q: dict) -> dict | None:
         try:
             resp = client.beta.chat.completions.parse(
                 model=MODEL_VALIDATE,
@@ -173,9 +172,8 @@ def cmd_sample(n_arg: str | None) -> None:
             )
             verdict = resp.choices[0].message.parsed
             if verdict is None:
-                continue
-            severity_counts[verdict.severity] += 1
-            record = {
+                return None
+            return {
                 "id": q["id"],
                 "section": q.get("section"),
                 "subtopic": q.get("subtopic"),
@@ -184,11 +182,26 @@ def cmd_sample(n_arg: str | None) -> None:
                 "severity": verdict.severity,
                 "issues": verdict.issues,
             }
-            results.append(record)
-            if verdict.severity == "major":
-                flagged_ids.append(q["id"])
         except Exception as e:
             console.print(f"[yellow]Помилка для {q.get('id')}: {e}[/yellow]")
+            return None
+
+    results: list[dict] = []
+    flagged_ids: list[str] = []
+    severity_counts = {"none": 0, "minor": 0, "major": 0}
+
+    with ThreadPoolExecutor(max_workers=VALIDATE_CONCURRENCY) as ex:
+        futures = {ex.submit(_validate_one, q): q for q in sample}
+        with tqdm(total=len(futures), desc="validate", unit="q") as pbar:
+            for fut in as_completed(futures):
+                record = fut.result()
+                pbar.update(1)
+                if record is None:
+                    continue
+                severity_counts[record["severity"]] += 1
+                results.append(record)
+                if record["severity"] == "major":
+                    flagged_ids.append(record["id"])
 
     out_path = NORMALIZED / "validation.jsonl"
     _write_jsonl(out_path, results)
