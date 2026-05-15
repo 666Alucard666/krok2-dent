@@ -30,7 +30,7 @@ DATA = ROOT / "data"
 NORMALIZED = DATA / "normalized"
 PROMPTS = ROOT / "scripts" / "prompts"
 
-MODEL_VALIDATE = "gpt-4o"
+MODEL_VALIDATE = "gpt-5"
 EMBED_MODEL = "text-embedding-3-small"
 DEDUP_THRESHOLD = 0.92  # косинусна подібність вище → дублікат
 
@@ -168,7 +168,6 @@ def cmd_sample(n_arg: str | None) -> None:
                     {"role": "user", "content": _validate_prompt(q)},
                 ],
                 response_format=ValidationVerdict,
-                temperature=0,
             )
             verdict = resp.choices[0].message.parsed
             if verdict is None:

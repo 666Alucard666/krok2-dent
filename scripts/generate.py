@@ -37,8 +37,8 @@ DATA = ROOT / "data"
 NORMALIZED = DATA / "normalized"
 BATCH_DIR = DATA / "batch_results"
 
-MODEL_BULK = "gpt-4o-mini"
-MODEL_VALIDATE = "gpt-4o"
+MODEL_BULK = "gpt-5-mini"
+MODEL_VALIDATE = "gpt-5"
 
 QUESTIONS_PER_REQUEST = 8
 
@@ -173,7 +173,6 @@ def cmd_smoke() -> None:
             {"role": "user", "content": _user_prompt_for(job)},
         ],
         response_format=QuestionBatch,
-        temperature=0.8,
     )
     batch = resp.choices[0].message.parsed
     if batch is None:
@@ -243,8 +242,7 @@ def cmd_build_batch(total: int = DEFAULT_TOTAL) -> None:
                             "strict": True,
                         }
                     },
-                    "temperature": 0.85,
-                    "max_tokens": 8192,
+                    "max_completion_tokens": 16000,
                 },
             }
             f.write(json.dumps(request, ensure_ascii=False) + "\n")
